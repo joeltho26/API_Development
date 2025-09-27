@@ -56,7 +56,9 @@ def get_post_index(id) -> int:
             return idx
 
 def remove_post(id):
-    my_posts.pop(get_post_index(id))
+    index = get_post_index(id)
+    if index is not None:
+        my_posts.pop(index)
     return
 
 def update(id, data):
@@ -97,9 +99,7 @@ def delete_post(id : int):
 @app.put("/posts/{id}", status_code=status.HTTP_200_OK)
 def update_post(id: int, payload: Post):
     data = payload.model_dump()
-    print(data)
     post = find_post(id)
-    print(post)
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
                             detail=f"post with id {id} not found to update!")
