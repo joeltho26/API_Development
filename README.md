@@ -20,3 +20,9 @@
 To run the app:
 
 ```uvicorn app.main:app --reload```
+
+Note:
+
+sometimes, there are issues while having 2 projects inside same folder directory with different ```venv/``` environments and trying to install packages eg: ```fastapi[all]``` into the respective environments. To resolve these issues try the command below,
+
+```python -m pip install -r requirements.txt```
