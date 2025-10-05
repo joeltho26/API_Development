@@ -24,6 +24,13 @@ class PostReponse(PostBase):
     class Config:
         from_attributes = True
         
+class PostVoteReponse(BaseModel):
+    post: PostReponse
+    votes: int
+    
+    class Config:
+        from_attributes = True
+        
 # class PostReponseUpdate(PostBase):
 #     id : int
 #     updated_at: datetime

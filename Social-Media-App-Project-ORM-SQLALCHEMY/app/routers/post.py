@@ -1,26 +1,33 @@
 from fastapi import status, HTTPException, Depends, Response, APIRouter
-from ..schemas.post import PostCreate, PostUpdate, PostReponse
-from ..model import Post
+from ..schemas.post import PostCreate, PostUpdate, PostReponse, PostVoteReponse
+from ..models.post import Post
+from ..models.vote import Vote
 from ..database import get_db
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from typing import List, Optional
 from ..oauth2 import get_current_user
+from sqlalchemy import func, desc
 
 router = APIRouter(
     prefix="/posts",
     tags=['Posts']
 )
 
-@router.get("/", response_model=List[PostReponse])
+# response_model=List[PostVoteReponse]
+@router.get("/", response_model=List[PostVoteReponse])
 def get_posts(db: Session = Depends(get_db), 
-              current_user: dict = Depends(get_current_user),
-              limit: int = 10, skip: int = 0, search: Optional[str] = ""):
+              limit: int = 10, 
+              skip: int = 0, 
+              search: Optional[str] = ""):
     
     # posts = db.query(Post).all()
-    posts = db.query(Post).filter(Post.title.contains(search)).limit(limit).offset(skip).all()
+    # posts = db.query(Post).filter(Post.title.contains(search)).limit(limit).offset(skip).all()
     # db.execute("""SELECT * FROM posts""")
     # posts = db.fetchall()
     # posts = db.query(Post).filter(Post.owner_id == current_user.id).all()
+    alias_post = aliased(Post, name='post')
+    posts = db.query(alias_post, func.count(Vote.post_id).label("votes")).join(Vote,Vote.post_id == alias_post.id, isouter=True).group_by(alias_post.id).filter(alias_post.title.contains(search)).limit(limit).offset(skip).all()
+    
     return posts
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=PostReponse)
@@ -41,25 +48,52 @@ def create_post(payload: PostCreate, db: Session = Depends(get_db),
     db.refresh(new_post)
     return new_post
 
-@router.get("/latest", response_model=PostReponse)
-def get_latest_post(db: Session = Depends(get_db), 
-                    current_user: dict = Depends(get_current_user)):
+# response_model=PostReponse
+@router.get("/latest", response_model=List[PostVoteReponse])
+def get_latest_post(db: Session = Depends(get_db),
+                    limit: int = 3):
     
-    posts = db.query(Post).all()
-    for post in posts:
-        pass
-    return post
+    # posts = db.query(Post).all()
+    alias_post = aliased(Post, name='post')
+    posts = db.query(alias_post, func.count(Vote.post_id).label("votes")).join(Vote,Vote.post_id == alias_post.id, isouter=True).group_by(alias_post.id).order_by(alias_post.updated_at.desc()).limit(limit).all()
+    
+    return posts
 
-@router.get("/{id}", response_model=PostReponse)
+@router.get("/{id}", response_model=PostVoteReponse)
 def get_post(id: int, db: Session = Depends(get_db), 
              current_user: dict = Depends(get_current_user)):
     
-    post = db.get(Post,id)
-    # post = db.query(model.Post).filter(model.Post.id == id).first()
-    if not post:
+    # post = db.get(Post,id)
+    alias_post = aliased(Post, name='post')
+    post_result = db.query(alias_post, func.count(Vote.post_id).label("votes")).join(Vote,Vote.post_id == alias_post.id, isouter=True).filter(alias_post.id == id).group_by(alias_post.id).first()
+    
+    if not post_result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
-                            detail=f"post with id {id} not found!")
-    return post
+                            detail=f"posts with id {id} not found!")
+    
+    if post_result.post.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
+                            detail=f"Not authorized to perform requested action")
+        
+    return post_result
+
+@router.get("/users/{user_id}", response_model=List[PostVoteReponse])
+def get_user_posts(user_id: int, db: Session = Depends(get_db), 
+             current_user: dict = Depends(get_current_user)):
+    
+    # post = db.get(Post,id)
+    alias_post = aliased(Post, name='post')
+    posts = db.query(alias_post, func.count(Vote.post_id).label("votes")).join(Vote,Vote.post_id == alias_post.id, isouter=True).filter(alias_post.owner_id == user_id).group_by(alias_post.id).all()
+    
+    if not posts:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=f"posts created with user id {user_id} not found!")
+    
+    if user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
+                            detail=f"Not authorized to perform requested action")
+        
+    return posts
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(id : int, db: Session = Depends(get_db), 

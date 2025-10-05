@@ -5,7 +5,7 @@ from ..database import get_db
 from ..utils import verify
 from ..schemas.auth import Login
 from ..schemas.token import Token
-from ..model import User
+from ..models.user import User
 from ..oauth2 import create_access_token
 
 router = APIRouter(
